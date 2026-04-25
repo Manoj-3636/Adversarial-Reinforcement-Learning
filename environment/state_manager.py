@@ -3,10 +3,13 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from environment.config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX
+from environment.config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX, ATTACK_LOSSES, FALSE_ALERT_LAMBDAS
 from scipy.stats import hypergeom
 
-
+FALSE_LAMBDA_VEC = np.array(
+    list(FALSE_ALERT_LAMBDAS.values()),
+    dtype=np.float64
+)
 def _calculate_undetected_prob(N_vec:NDArray[np.int32], S_matrix:NDArray[np.int32], alpha_vec:NDArray[np.int32],M_vec:NDArray[np.int32]):
 
 
@@ -28,10 +31,10 @@ def _calculate_undetected_prob(N_vec:NDArray[np.int32], S_matrix:NDArray[np.int3
 
     # 3. Multiply probabilities across the alert types (axis=1)
     # This gives a 1D array of length `num_attacks`, representing p_a for each attack
-    p_a_vec = np.prod(prob_matrix, axis=1)
+    p_a_undetected = np.prod(prob_matrix, axis=1)
 
     # 4. Zero out the probabilities for attacks that were never mounted this round
-    return p_a_vec * M_vec
+    return p_a_undetected * M_vec
 
 @dataclass(
     slots=True
@@ -54,9 +57,13 @@ class SystemState:
         :return: None
         """
         self.attack_mounted = attack_array
-        self.uninvestigated_alerts += TRUE_ALERT_MATRIX[self.attack_mounted]
-        self.alerts_due_attack += TRUE_ALERT_MATRIX[self.attack_mounted]
-        return self.attack_mounted,self.uninvestigated_alerts,self.alerts_due_attack
+        self.alerts_due_attack.fill(0)
+        false_alerts = np.random.poisson(lam=FALSE_LAMBDA_VEC).astype(np.int32)
+        self.uninvestigated_alerts += false_alerts
+        self.alerts_due_attack[attack_array] = TRUE_ALERT_MATRIX[attack_array,:]
+        self.uninvestigated_alerts += np.sum(self.alerts_due_attack,0)
+
+
 
     def state_update_defender(self,investigation_array:NDArray[np.int32]):
         """
@@ -66,16 +73,19 @@ class SystemState:
         :return:None
         """
 
+        p_undetected = _calculate_undetected_prob(self.uninvestigated_alerts,self.alerts_due_attack,investigation_array,self.attack_mounted.astype(int))
+        sample = np.random.uniform(0,1,p_undetected.size)
 
 
-    def step(self):
-        """
-        Give the reward for the defender on each step
-        :return: Reward for defender
-        """
+        undetected_attacks = sample < p_undetected
+        LOSS_VECTOR = np.array(list(ATTACK_LOSSES.values()),dtype=np.float64)
+        reward_defender = -np.sum(LOSS_VECTOR[undetected_attacks])
+        reward_attacker = -reward_defender
+        self.uninvestigated_alerts -= investigation_array
+        # TODO remove the uninvestigated alerts that are caused by alerts and then test if performance of defender if bad
 
 
-
+        return reward_defender,reward_attacker
 
 
     def _get_defender_state(self):
