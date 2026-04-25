@@ -30,13 +30,13 @@ def he_normal_init(module):
 class Critic(nn.Module):
     def __init__(self,state_dim,action_dim):
         super(Critic,self).__init__()
-        self.fc1 = nn.Linear(state_dim+action_dim,NN_ARCH["critic_hidden_layer"])
+        self.fc1 = nn.Linear(state_dim+action_dim,NN_ARCH["critic_hidden_units"])
         self.fc2 = nn.Linear(NN_ARCH["critic_hidden_units"],1)
 
         self.apply(he_normal_init)
 
     def forward(self,state,action):
-        x = torch.concat([state,action],1)
+        x = torch.cat([state,action],1)
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
