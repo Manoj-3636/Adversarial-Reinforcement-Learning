@@ -30,7 +30,7 @@ class EpsilonGreedyExploration :
     DDPG-MIX agents to store and sample state transitions.
     """
 
-    def init(self,epsilon_start = 1.0 ,epsilon_min = 0.01 ,decay_rate=0.995):
+    def __init__(self,epsilon_start = 1.0 ,epsilon_min = 0.01 ,decay_rate=0.995):
         self.epsilon = epsilon_start
         self.epsilon_min = epsilon_min
         self.decay_rate = decay_rate
