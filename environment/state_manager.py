@@ -63,8 +63,6 @@ class SystemState:
         self.alerts_due_attack[attack_array] = TRUE_ALERT_MATRIX[attack_array,:]
         self.uninvestigated_alerts += np.sum(self.alerts_due_attack,0)
 
-
-
     def state_update_defender(self,investigation_array:NDArray[np.int32]):
         """
         Updates the state based on the given defender's investigation array
@@ -85,7 +83,7 @@ class SystemState:
         # TODO remove the uninvestigated alerts that are caused by alerts and then test if performance of defender if bad
 
 
-        return reward_defender,reward_attacker
+        return reward_defender,reward_attacker,p_undetected
 
 
     def _get_defender_state(self):
@@ -101,4 +99,14 @@ class DefenderState:
     def __post_init__(self):
         assert self.uninvestigated_alerts.shape == (len(ALERTS),)
 
+# TESTING
+if __name__ == "__main__":
+    state = SystemState(
+        uninvestigated_alerts=np.zeros(len(ALERTS), dtype=np.int32),
+        attack_mounted=np.zeros(len(ATTACKS), dtype=np.bool_),
+        alerts_due_attack=np.zeros((len(ATTACKS), len(ALERTS)), dtype=np.int32)
+    )
 
+    state.state_update_attacker(np.array([0,0,1,0,0,0,0],dtype=bool))
+    print(state.uninvestigated_alerts)
+    print(state.state_update_defender(np.array([500,500,state.uninvestigated_alerts[2],500,500,500,500])))
