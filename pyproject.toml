@@ -4,6 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.12"
 dependencies = [
+    "matplotlib>=3.10.9",
+    "nashpy>=0.0.43",
     "numpy>=2.4.4",
     "scipy>=1.17.1",
     "scipy-stubs==1.17.1.4",
