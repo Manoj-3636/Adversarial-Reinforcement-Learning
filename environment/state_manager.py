@@ -83,7 +83,7 @@ class SystemState:
         # TODO remove the uninvestigated alerts that are caused by alerts and then test if performance of defender if bad
 
 
-        return reward_defender,reward_attacker,p_undetected
+        return reward_defender,reward_attacker
 
 
     def _get_defender_state(self):
