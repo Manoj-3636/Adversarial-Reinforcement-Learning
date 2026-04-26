@@ -7,6 +7,9 @@ from numpy.typing import NDArray
 from environment.config import DEFENDER_BUDGET_DEFAULT
 import numpy as np
 
+def preprocess_defender_state(state):
+    return np.log1p(state).astype(np.float32) / 10.0
+
 class Defender:
     def __init__(self):
         self.policy = Actor(len(ALERTS),len(ALERTS))

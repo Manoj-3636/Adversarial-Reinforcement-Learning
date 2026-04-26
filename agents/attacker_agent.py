@@ -6,7 +6,16 @@ import copy
 from ddpg import Actor, Critic, Policy
 from environment.config import ALERTS, ATTACKS,ATTACKER_BUDGET_DEFAULT,ATTACK_LOSSES
 
+def preprocess_attacker_state(N,M,S):
+    x = np.concatenate([
+        np.log1p(N)/10,
+        M.astype(np.float32),
+        np.log1p(S.flatten())/10
+    ])
+    return x.astype(np.float32)
+
 class Attacker:
+
     def __init__(self):
         """
         According to paper:
