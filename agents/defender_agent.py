@@ -3,6 +3,9 @@ import torch.optim as optim
 import copy
 from ddpg import Actor,Critic,Policy
 from environment.config import ALERTS
+from numpy.typing import NDArray
+from environment.config import DEFENDER_BUDGET_DEFAULT
+import numpy as np
 
 class Defender:
     def __init__(self):
@@ -42,5 +45,12 @@ class Defender:
         snapshot = copy.deepcopy(self.policy.state_dict())
 
         self.policies.append(
-            Policy(model=snapshot, itr=itr)
+            Policy(model=snapshot, itr=itr,type="nn")
         )
+
+
+def uniform_policy(n:NDArray):
+    inv = np.zeros_like(n)
+    inv = inv + DEFENDER_BUDGET_DEFAULT/len(n)
+    inv = np.clip(inv,np.zeros_like(inv),n)
+    return inv

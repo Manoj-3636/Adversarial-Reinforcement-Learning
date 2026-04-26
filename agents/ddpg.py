@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Union, Callable
 
 import torch
 import torch.nn as nn
@@ -44,5 +45,6 @@ class Critic(nn.Module):
 
 @dataclass
 class Policy:
-    model:dict
+    type:str
+    model:Union[Callable,dict]
     itr:int

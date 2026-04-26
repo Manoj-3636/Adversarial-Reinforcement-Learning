@@ -1,10 +1,10 @@
+import numpy as np
 import torch
 import torch.optim as optim
 import copy
 
 from ddpg import Actor, Critic, Policy
-from environment.config import ALERTS, ATTACKS
-
+from environment.config import ALERTS, ATTACKS,ATTACKER_BUDGET_DEFAULT,ATTACK_LOSSES
 
 class Attacker:
     def __init__(self):
@@ -22,9 +22,9 @@ class Attacker:
         """
 
         self.state_dim = (
-            len(ALERTS)
-            + len(ATTACKS)
-            + len(ATTACKS) * len(ALERTS)
+                len(ALERTS)
+                + len(ATTACKS)
+                + len(ATTACKS) * len(ALERTS)
         )
 
         self.action_dim = len(ATTACKS)
@@ -114,5 +114,8 @@ class Attacker:
         )
 
         self.policies.append(
-            Policy(model=snapshot, itr=itr)
+            Policy(model=snapshot, itr=itr,type="nn")
         )
+
+def greedy_attacker():
+    return np.array([False,True,False,False,True,False,False])
