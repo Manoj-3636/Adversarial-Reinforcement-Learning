@@ -102,4 +102,10 @@ def solve_zero_sum_game(U):
 
     sigma_att = res2.x[:n]
 
+    sigma_def = np.clip(sigma_def, 0, None)
+    sigma_def /= sigma_def.sum()
+
+    sigma_att = np.clip(sigma_att, 0, None)
+    sigma_att /= sigma_att.sum()
+
     return sigma_def, sigma_att, value
