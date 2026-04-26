@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -40,3 +42,7 @@ class Critic(nn.Module):
         x = F.relu(self.fc1(x))
         return self.fc2(x)
 
+@dataclass
+class Policy:
+    model:dict
+    itr:int

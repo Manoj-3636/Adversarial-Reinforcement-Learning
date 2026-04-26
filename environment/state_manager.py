@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from environment.config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX, ATTACK_LOSSES, FALSE_ALERT_LAMBDAS
+from config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX, ATTACK_LOSSES, FALSE_ALERT_LAMBDAS
 from scipy.stats import hypergeom
 
 FALSE_LAMBDA_VEC = np.array(
@@ -50,6 +50,11 @@ class SystemState:
         assert self.attack_mounted.shape == (len(ATTACKS),)
         assert self.alerts_due_attack.shape == (len(ATTACKS), len(ALERTS))
 
+    def reset(self):
+        self.uninvestigated_alerts.fill(0)
+        self.attack_mounted.fill(0)
+        self.alerts_due_attack.fill(0)
+
     def state_update_attacker(self,attack_array:NDArray[np.bool_]):
         """
         Updates the state based on the given attacker's action
@@ -57,11 +62,9 @@ class SystemState:
         :return: None
         """
         self.attack_mounted = attack_array
-        self.alerts_due_attack.fill(0)
-        false_alerts = np.random.poisson(lam=FALSE_LAMBDA_VEC).astype(np.int32)
-        self.uninvestigated_alerts += false_alerts
         self.alerts_due_attack[attack_array] = TRUE_ALERT_MATRIX[attack_array,:]
         self.uninvestigated_alerts += np.sum(self.alerts_due_attack,0)
+        return self.alerts_due_attack
 
     def state_update_defender(self,investigation_array:NDArray[np.int32]):
         """
@@ -80,14 +83,17 @@ class SystemState:
         reward_defender = -np.sum(LOSS_VECTOR[undetected_attacks])
         reward_attacker = -reward_defender
         self.uninvestigated_alerts -= investigation_array
-        # TODO remove the uninvestigated alerts that are caused by alerts and then test if performance of defender if bad
-
 
         return reward_defender,reward_attacker
 
+    def generateFalseAlerts(self):
+        false_alerts = np.random.poisson(lam=FALSE_LAMBDA_VEC).astype(np.int32)
+        self.uninvestigated_alerts += false_alerts
+        return false_alerts
 
     def _get_defender_state(self):
         return DefenderState(uninvestigated_alerts=self.uninvestigated_alerts)
+
 
 
 @dataclass(
@@ -106,7 +112,10 @@ if __name__ == "__main__":
         attack_mounted=np.zeros(len(ATTACKS), dtype=np.bool_),
         alerts_due_attack=np.zeros((len(ATTACKS), len(ALERTS)), dtype=np.int32)
     )
+    state.generateFalseAlerts()
 
     state.state_update_attacker(np.array([0,0,1,0,0,0,0],dtype=bool))
-    print(state.uninvestigated_alerts)
+
     print(state.state_update_defender(np.array([500,500,state.uninvestigated_alerts[2],500,500,500,500])))
+    state.reset()
+    print(state)
