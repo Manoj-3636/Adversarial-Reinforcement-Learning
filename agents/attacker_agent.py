@@ -3,16 +3,48 @@ import torch
 import torch.optim as optim
 import copy
 
-from ddpg import Actor, Critic, Policy
+from agents.ddpg import Actor, Critic, Policy
 from environment.config import ALERTS, ATTACKS,ATTACKER_BUDGET_DEFAULT,ATTACK_LOSSES
 
-def preprocess_attacker_state(N,M,S):
+def preprocess_attacker_state(N,S):
     x = np.concatenate([
         np.log1p(N)/10,
-        M.astype(np.float32),
         np.log1p(S.flatten())/10
     ])
     return x.astype(np.float32)
+
+
+def run_attacker_policy(policy:Policy, N, S):
+    """
+    full attacker observation
+    returns attack action vector
+    """
+
+    if policy.type == "func":
+        return policy.model(N, S)
+
+    elif policy.type == "nn":
+
+        x = preprocess_attacker_state(N, S)
+
+        state_dim = (
+            len(ALERTS)
+            + len(ATTACKS)
+            + len(ALERTS) * len(ATTACKS)
+        )
+
+        net = Actor(state_dim, len(ATTACKS))
+        net.load_state_dict(policy.model)
+        net.eval()
+
+        with torch.no_grad():
+            inp = torch.tensor(x).unsqueeze(0)
+            out = net(inp).squeeze(0).numpy()
+
+        return out
+
+    else:
+        raise ValueError("Unknown policy type")
 
 class Attacker:
 
@@ -62,7 +94,7 @@ class Attacker:
         """
         One DDPG-MIX update step for attacker
 
-        state      = flattened full attacker state
+        state      = preprocessed full attacker state
         action     = attack allocation vector
         reward     = attacker reward
         next_state = next flattened state
@@ -126,5 +158,10 @@ class Attacker:
             Policy(model=snapshot, itr=itr,type="nn")
         )
 
-def greedy_attacker():
+def greedy_attacker(N,S):
     return np.array([False,True,False,False,True,False,False])
+
+def uniform_attacker(N, S):
+    x = np.zeros(len(ATTACKS), dtype=bool)
+    x[0] = True
+    return x

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import numpy as np
 from numpy.typing import NDArray
 
-from config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX, ATTACK_LOSSES, FALSE_ALERT_LAMBDAS
+from environment.config import ALERTS, ATTACKS, TRUE_ALERT_MATRIX, ATTACK_LOSSES, FALSE_ALERT_LAMBDAS
 from scipy.stats import hypergeom
 
 FALSE_LAMBDA_VEC = np.array(
@@ -91,7 +91,7 @@ class SystemState:
         self.uninvestigated_alerts += false_alerts
         return false_alerts
 
-    def _get_defender_state(self):
+    def get_defender_state(self):
         return DefenderState(uninvestigated_alerts=self.uninvestigated_alerts)
 
 

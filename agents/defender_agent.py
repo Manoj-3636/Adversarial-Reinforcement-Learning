@@ -1,7 +1,7 @@
 import torch
 import torch.optim as optim
 import copy
-from ddpg import Actor,Critic,Policy
+from agents.ddpg import Actor,Critic,Policy
 from environment.config import ALERTS
 from numpy.typing import NDArray
 from environment.config import DEFENDER_BUDGET_DEFAULT
@@ -9,6 +9,32 @@ import numpy as np
 
 def preprocess_defender_state(state):
     return np.log1p(state).astype(np.float32) / 10.0
+
+def run_defender_policy(policy:Policy, state):
+    """
+    state = uninvestigated_alerts
+    returns defense action
+    """
+
+    if policy.type == "func":
+        return policy.model(state)
+
+    elif policy.type == "nn":
+
+        x = preprocess_defender_state(state)
+
+        net = Actor(len(ALERTS), len(ALERTS))
+        net.load_state_dict(policy.model)
+        net.eval()
+
+        with torch.no_grad():
+            inp = torch.tensor(x).unsqueeze(0)
+            out = net(inp).squeeze(0).numpy()
+
+        return out
+
+    else:
+        raise ValueError("Unknown policy type")
 
 class Defender:
     def __init__(self):
@@ -21,7 +47,7 @@ class Defender:
 
     def update(self,state,action,reward,next_state):
         """
-        Implements a single update step of the DDPG mix algorithm
+        Implements a single update step of the DDPG mix algorithm only give preprocessed states
         """
         s = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
         a = torch.tensor(action, dtype=torch.float32).unsqueeze(0)
@@ -53,7 +79,29 @@ class Defender:
 
 
 def uniform_policy(n:NDArray):
-    inv = np.zeros_like(n)
-    inv = inv + DEFENDER_BUDGET_DEFAULT/len(n)
+    inv = np.zeros_like(n,dtype=np.int32)
+    inv = inv + DEFENDER_BUDGET_DEFAULT//len(n)
     inv = np.clip(inv,np.zeros_like(inv),n)
+    inv = inv.astype(np.int32)
+    return inv
+
+def priority_policy(n):
+    """
+    Put budget on largest backlog first
+    """
+
+    inv = np.zeros_like(n, dtype=np.int32)
+
+    budget = DEFENDER_BUDGET_DEFAULT
+
+    order = np.argsort(-n)   # descending
+
+    for idx in order:
+        take = min(n[idx], budget)
+        inv[idx] = take
+        budget -= take
+
+        if budget == 0:
+            break
+
     return inv
