@@ -43,7 +43,7 @@ ATTACK_LOSSES = {
     "Heartbleed": 3.6,
     "Infiltration": 1.4,
     "PortScan": 1.4,
-    "Web Attack": 27.0
+    "Web Attack": 2.7
 }
 
 # ==========================================
