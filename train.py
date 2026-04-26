@@ -261,26 +261,39 @@ class Trainer:
 
     def train(
         self,
-        iterations=10,
+        iterations=20,
         matrix_episodes=20,
-        matrix_horizon=30,
+        matrix_horizon=50,
         br_episodes=200,
         br_horizon=50,
         export_dir="exports",
+        tol=0.50,  # convergence threshold
+        patience=3,  # how many consecutive stable values
     ):
 
         os.makedirs(export_dir, exist_ok=True)
+
+        # ------------------------------------------
+        # store LP game values over iterations
+        # ------------------------------------------
+        values = []
+
+        stable_count = 0
 
         print("=" * 60)
         print("STARTING TRAINING")
         print("=" * 60)
 
         for itr in range(1, iterations + 1):
+
             print("\n")
             print("=" * 60)
             print(f"DOUBLE ORACLE ITERATION {itr}")
             print("=" * 60)
 
+            # ======================================
+            # 1. BUILD UTILITY MATRIX
+            # ======================================
             print("Building Utility Matrix...")
 
             U = self.build_utility_matrix(
@@ -290,6 +303,9 @@ class Trainer:
             print("Utility Matrix Built:")
             print(U)
 
+            # ======================================
+            # 2. LP SOLVE
+            # ======================================
             print("\nSolving LP Equilibrium...")
 
             sigma_D, sigma_A, value = solve_zero_sum_game(U)
@@ -305,29 +321,66 @@ class Trainer:
             print("Game Value:")
             print(value)
 
+            # --------------------------------------
+            # store values
+            # --------------------------------------
+            values.append(value)
+
+            # ======================================
+            # 3. CHECK CONVERGENCE
+            # ======================================
+            if len(values) >= 2:
+
+                diff = abs(values[-1] - values[-2])
+
+                print("\nChange From Previous Value:")
+                print(diff)
+
+                if diff < tol:
+                    stable_count += 1
+                    print(f"Stable Iterations: " f"{stable_count}/{patience}")
+                else:
+                    stable_count = 0
+
+                if stable_count >= patience:
+                    print("\nConvergence Reached.")
+                    print("Stopping Early.")
+                    break
+
+            # ======================================
+            # 4. TRAIN ATTACKER BR
+            # ======================================
             print("\nTraining Attacker Best Response...")
 
             new_att = self.train_attacker_br(
                 sigma_D, itr=itr, episodes=br_episodes, horizon=br_horizon
             )
 
+            # ======================================
+            # 5. TRAIN DEFENDER BR
+            # ======================================
             print("\nTraining Defender Best Response...")
 
             new_def = self.train_defender_br(
                 sigma_A, itr=itr, episodes=br_episodes, horizon=br_horizon
             )
 
+            # ======================================
+            # 6. EXPAND POLICY POOLS
+            # ======================================
             self.attacker.policies.append(new_att)
+
             print("Attacker BR Added.")
             print("Attacker Pool Size:", len(self.attacker.policies))
+
             self.defender.policies.append(new_def)
 
             print("Defender BR Added.")
             print("Defender Pool Size:", len(self.defender.policies))
 
-        # ======================================================
+        # ==========================================
         # FINAL EXPORT
-        # ======================================================
+        # ==========================================
         print("\n")
         print("=" * 60)
         print("FINAL EXPORT")
@@ -350,33 +403,14 @@ class Trainer:
         print("\nFinal Value:")
         print(value)
 
-        # ------------------------------------------------------
-        # save defender pool
-        # ------------------------------------------------------
-        os.makedirs(f"{export_dir}/defender_pool", exist_ok=True)
-
-        for i, pol in enumerate(self.defender.policies):
-
-            if pol.type == "nn":
-                torch.save(pol.model, f"{export_dir}/defender_pool/policy_{i}.pt")
-
-        # ------------------------------------------------------
-        # save attacker pool
-        # ------------------------------------------------------
-        os.makedirs(f"{export_dir}/attacker_pool", exist_ok=True)
-
-        for i, pol in enumerate(self.attacker.policies):
-
-            if pol.type == "nn":
-                torch.save(pol.model, f"{export_dir}/attacker_pool/policy_{i}.pt")
-
-        # ------------------------------------------------------
-        # save distributions
-        # ------------------------------------------------------
+        # ------------------------------------------
+        # save convergence values too
+        # ------------------------------------------
         final_info = {
             "defender_distribution": sigma_D.tolist(),
             "attacker_distribution": sigma_A.tolist(),
             "game_value": float(value),
+            "value_history": values,
             "defender_pool_size": len(self.defender.policies),
             "attacker_pool_size": len(self.attacker.policies),
         }
@@ -396,4 +430,4 @@ if __name__ == "__main__":
     # print(matrix)
     # print(solve_zero_sum_game(matrix))
 
-    trainer.train(matrix_episodes=20, matrix_horizon=50)
+    trainer.train(matrix_episodes=20, matrix_horizon=50, iterations=20)
