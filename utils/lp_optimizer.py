@@ -52,13 +52,7 @@ def solve_zero_sum_game(U):
     bounds = [(0, None)] * m + [(None, None)]
 
     res = linprog(
-        c,
-        A_ub=A_ub,
-        b_ub=b_ub,
-        A_eq=A_eq,
-        b_eq=b_eq,
-        bounds=bounds,
-        method="highs"
+        c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method="highs"
     )
 
     if not res.success:
@@ -100,7 +94,7 @@ def solve_zero_sum_game(U):
         A_eq=A_eq2,
         b_eq=b_eq2,
         bounds=bounds2,
-        method="highs"
+        method="highs",
     )
 
     if not res2.success:
