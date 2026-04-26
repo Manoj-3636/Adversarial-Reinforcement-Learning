@@ -46,6 +46,28 @@ def suricata_policy(n):
     return inv
 
 
+def uniform_attacker_policy(N, M, S):
+    """
+    Uniformly distributes the attacker budget across all attacks by randomly
+    shuffling attack order and selecting each one until the budget runs out.
+    Unlike greedy (which picks by loss/cost ratio) this ignores impact —
+    every attack gets an equal chance of being selected each episode.
+    """
+    costs = np.array(list(ATTACK_COSTS.values()))
+    action = np.zeros(len(costs), dtype=bool)
+    budget = ATTACKER_BUDGET_DEFAULT
+
+    # shuffle so no single attack is always favoured when budget runs short
+    order = np.random.permutation(len(costs))
+
+    for idx in order:
+        if costs[idx] <= budget:
+            action[idx] = True
+            budget -= costs[idx]
+
+    return action
+
+
 from environment.ade import ADE
 import numpy as np
 import torch
@@ -187,6 +209,7 @@ class Trainer:
         # ------------------------------------------------------------------ #
 
         # Attacker baselines
+        self.attacker.policies.append(Policy("func", greedy_attacker, 0))
         self.attacker.policies.append(Policy("func", uniform_attacker, 0))
 
         # Defender baselines
@@ -353,10 +376,10 @@ class Trainer:
         return learner.policies[-1]
 
     # ---------------------------------------------------------------------- #
-    # Attacker evaluation (paper Section V – Figure 7 style)                 #
+    # Attacker evaluation                                                     #
     # ---------------------------------------------------------------------- #
 
-    def evaluate_trained_attacker(
+    def evaluate_uniform_attacker(
         self,
         arl_defender_policy,
         eval_episodes=100,
@@ -364,7 +387,7 @@ class Trainer:
         export_dir="exports",
     ):
         """
-        Test the trained ARL attacker against three defender policies:
+        Test the uniform attacker against three defender policies:
           1. Uniform  – uniform budget allocation across alert types
           2. Suricata – strict Suricata severity ordering (Table III)
           3. ARL      – the trained neural-network defender
@@ -374,38 +397,26 @@ class Trainer:
         """
         print("\n")
         print("=" * 60)
-        print("ATTACKER EVALUATION  (Trained ARL Attacker)")
+        print("ATTACKER EVALUATION  (Uniform Attacker)")
         print("=" * 60)
 
-        # ------------------------------------------------------------------ #
-        # Three defender policies to test against                            #
-        # ------------------------------------------------------------------ #
         defender_catalogue = {
             "Uniform": Policy("func", uniform_policy, 0),
             "Suricata": Policy("func", suricata_policy, 0),
             "ARL": arl_defender_policy,
         }
 
-        # ------------------------------------------------------------------ #
-        # Retrieve the trained ARL attacker                                  #
-        # ------------------------------------------------------------------ #
-        arl_attacker = self._get_arl_attacker()
+        uniform_att = Policy("func", uniform_attacker_policy, 0)
 
-        # ------------------------------------------------------------------ #
-        # Run evaluation                                                      #
-        # ------------------------------------------------------------------ #
         results = evaluate_attacker_vs_defenders(
             self.env,
-            arl_attacker,
+            uniform_att,
             defender_catalogue,
             episodes=eval_episodes,
             horizon=horizon,
         )
 
-        # ------------------------------------------------------------------ #
-        # Print results                                                       #
-        # ------------------------------------------------------------------ #
-        print("\n  Trained ARL Attacker vs each defender:\n")
+        print("\n  Uniform Attacker vs each defender:\n")
         print(f"  {'Defender':<12}  {'Mean Defender Loss':>20}")
         print("  " + "-" * 36)
         for def_name, loss in results.items():
@@ -414,9 +425,6 @@ class Trainer:
         print("  (Higher loss = attacker is more effective against that defender)")
         print("  (ARL defender should show the lowest loss)")
 
-        # ------------------------------------------------------------------ #
-        # Persist                                                             #
-        # ------------------------------------------------------------------ #
         os.makedirs(export_dir, exist_ok=True)
         out_path = os.path.join(export_dir, "attacker_evaluation.json")
         with open(out_path, "w") as f:
@@ -425,34 +433,19 @@ class Trainer:
 
         return results
 
-    def _get_arl_attacker(self):
-        """
-        Return the most recently trained neural-net attacker from the pool.
-        Falls back to greedy baseline if no neural policy exists yet.
-        """
-        neural_policies = [p for p in self.attacker.policies if p.type != "func"]
-        if neural_policies:
-            return neural_policies[-1]
-
-        print(
-            "  [warn] No trained ARL attacker found – "
-            "falling back to Greedy baseline."
-        )
-        return Policy("func", greedy_attacker, 0)
-
     # ---------------------------------------------------------------------- #
     # Main double-oracle training loop                                        #
     # ---------------------------------------------------------------------- #
 
     def train(
         self,
-        iterations=10,
+        iterations=20,
         matrix_episodes=20,
         matrix_horizon=50,
         br_episodes=200,
         br_horizon=50,
         export_dir="exports",
-        tol=1,  # convergence threshold on game-value change
+        tol=0.50,  # convergence threshold on game-value change
         patience=3,  # consecutive stable iterations required
         eval_episodes=100,  # episodes for final attacker evaluation
     ):
@@ -568,10 +561,9 @@ class Trainer:
 
         # ================================================================== #
         # ATTACKER EVALUATION                                                 #
-        # Test trained ARL attacker vs Uniform / Suricata / ARL defenders    #
-        # and compare against Uniform + Greedy attacker baselines            #
+        # Test uniform attacker vs Uniform / Suricata / ARL defenders        #
         # ================================================================== #
-        attacker_eval = self.evaluate_trained_attacker(
+        attacker_eval = self.evaluate_uniform_attacker(
             arl_defender_policy=arl_defender_policy,
             eval_episodes=eval_episodes,
             horizon=br_horizon,
@@ -611,7 +603,7 @@ class Trainer:
         best_weight = -1.0
 
         for idx, policy in enumerate(self.defender.policies):
-            if policy.type != "func" and sigma_D[idx] > best_weight:
+            if policy.kind != "func" and sigma_D[idx] > best_weight:
                 best_weight = sigma_D[idx]
                 best_policy = policy
 
