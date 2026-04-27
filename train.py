@@ -89,10 +89,10 @@ class Trainer:
 
         # Seed with initial policies
         self.attacker.policies.append(Policy("func", greedy_attacker, 0))
-        self.attacker.policies.append(Policy("func", uniform_attacker, 0))
+        # self.attacker.policies.append(Policy("func", uniform_attacker, 0))
 
         self.defender.policies.append(Policy("func", uniform_policy, 0))
-        self.defender.policies.append(Policy("func", priority_policy, 0))
+        # self.defender.policies.append(Policy("func", priority_policy, 0))
 
     # build using an MC estimate
     def build_utility_matrix(self, horizon=50, episodes=20):
