@@ -25,14 +25,9 @@ from environment.config import (
     ATTACKER_BUDGET_DEFAULT,
     DEFENDER_BUDGET_DEFAULT,
 )
+from evaluate import greedy_attacker_vs_arl_defender
 from utils.lp_optimizer import solve_zero_sum_game
 from utils.ri_utils import ReplayBuffer, EpsilonGreedyExploration
-
-
-def sample_policy(self, pool, sigma):
-    idx = np.random.choice(len(pool), p=sigma)
-
-    return pool[idx]
 
 
 def enforce_attacker_budget(
@@ -86,34 +81,45 @@ class Trainer:
         self.attacker = Attacker()
         self.defender = Defender()
         self.env = ADE()
+        self.curr_utility_matrix = np.zeros((1, 1), np.float64)
 
         # Seed with initial policies
         self.attacker.policies.append(Policy("func", greedy_attacker, 0))
-        # self.attacker.policies.append(Policy("func", uniform_attacker, 0))
+        self.attacker.policies.append(Policy("func", uniform_attacker, 0))
 
         self.defender.policies.append(Policy("func", uniform_policy, 0))
         # self.defender.policies.append(Policy("func", priority_policy, 0))
 
     # build using an MC estimate
-    def build_utility_matrix(self, horizon=50, episodes=20):
+    def build_utility_matrix_cached(self, horizon=50, episodes=20):
         m = len(self.defender.policies)
         n = len(self.attacker.policies)
 
-        U = np.zeros((m, n))
+        if self.curr_utility_matrix is None or self.curr_utility_matrix.size == 0:
+            self.curr_utility_matrix = np.zeros((m, n), dtype=np.float64)
+        old_m, old_n = self.curr_utility_matrix.shape
+
+        if old_m == m and old_n == n:
+            return self.curr_utility_matrix
+
+        new_U = np.zeros((m, n), dtype=np.float64)
+
+        new_U[:old_m, :old_n] = self.curr_utility_matrix
 
         for i in range(m):
             for j in range(n):
+                # already cached
+                if i < old_m and j < old_n:
+                    continue
                 vals = []
-
                 for ep in range(episodes):
-
-                    state = self.env.reset()
+                    self.env.reset()
                     total = 0.0
-
                     for t in range(horizon):
                         d_state = self.env.state.get_defender_state()
                         d_action = run_defender_policy(
-                            self.defender.policies[i], d_state.uninvestigated_alerts
+                            self.defender.policies[i],
+                            d_state.uninvestigated_alerts,
                         )
                         a_action = run_attacker_policy(
                             self.attacker.policies[j],
@@ -121,22 +127,21 @@ class Trainer:
                             self.env.state.attack_mounted,
                             self.env.state.alerts_due_attack,
                         )
-
                         r_d, r_a = self.env.step(a_action, d_action)
                         total += (0.95**t) * r_d
                     vals.append(total)
-
-                U[i, j] = np.mean(vals)
-        return U
+                new_U[i, j] = np.mean(vals)
+        self.curr_utility_matrix = new_U
+        return self.curr_utility_matrix
 
     def sample_policy(self, pool, sigma):
         idx = np.random.choice(len(pool), p=sigma)
 
         return pool[idx]
 
-    def train_attacker_br(self, sigma_D, itr, episodes=200, horizon=50, batch_size=64):
+    def train_attacker_br(self, sigma_D, itr, episodes=200, horizon=50, batch_size=128):
         learner = Attacker()
-        memory = ReplayBuffer(100000)
+        memory = ReplayBuffer(40000)
         explore = EpsilonGreedyExploration(
             epsilon_start=0.30, epsilon_min=0.02, decay_rate=0.995
         )
@@ -200,11 +205,13 @@ class Trainer:
 
         return learner.policies[-1]
 
-    def train_defender_br(self, sigma_A, itr, episodes=200, horizon=50, batch_size=64):
+    def train_defender_br(
+        self, sigma_A, itr, episodes=500, horizon=400, batch_size=128
+    ):
 
         learner = Defender()
 
-        memory = ReplayBuffer(100000)
+        memory = ReplayBuffer(40000)
 
         explore = EpsilonGreedyExploration(
             epsilon_start=0.25, epsilon_min=0.02, decay_rate=0.995
@@ -262,12 +269,12 @@ class Trainer:
     def train(
         self,
         iterations=20,
-        matrix_episodes=20,
+        matrix_episodes=200,
         matrix_horizon=50,
         br_episodes=200,
         br_horizon=50,
         export_dir="exports",
-        tol=0.50,  # convergence threshold
+        tol=0.3,  # convergence threshold
         patience=3,  # how many consecutive stable values
     ):
 
@@ -296,7 +303,7 @@ class Trainer:
             # ======================================
             print("Building Utility Matrix...")
 
-            U = self.build_utility_matrix(
+            U = self.build_utility_matrix_cached(
                 horizon=matrix_horizon, episodes=matrix_episodes
             )
 
@@ -388,7 +395,9 @@ class Trainer:
 
         print("Computing Final Equilibrium...")
 
-        U = self.build_utility_matrix(horizon=matrix_horizon, episodes=matrix_episodes)
+        U = self.build_utility_matrix_cached(
+            horizon=matrix_horizon, episodes=matrix_episodes
+        )
 
         sigma_D, sigma_A, value = solve_zero_sum_game(U)
 
@@ -430,4 +439,13 @@ if __name__ == "__main__":
     # print(matrix)
     # print(solve_zero_sum_game(matrix))
 
-    trainer.train(matrix_episodes=20, matrix_horizon=50, iterations=20)
+    sigma_D, sigma_A, value = trainer.train(
+        matrix_episodes=200,
+        matrix_horizon=200,
+        br_episodes=200,
+        br_horizon=200,
+        iterations=20,
+    )
+
+    against_ua = greedy_attacker_vs_arl_defender(trainer, sigma_D, 200, 200)
+    print("Uniform attacker vs arl_defender:", against_ua)
